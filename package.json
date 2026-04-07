@@ -1,0 +1,9 @@
+{
+  "name": "gmail-to-calendar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Extensao Chrome MV3 para detectar prazos no Gmail e criar eventos no Google Calendar.",
+  "scripts": {
+    "check": "node --check src/background/service-worker.js && node --check src/content/content-script.js && node --check src/options/options.js && node --check src/shared/storage.js"
+  }
+}

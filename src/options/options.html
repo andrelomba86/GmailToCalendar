@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gmail To Calendar</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4efe6;
+        --panel: #fffdf8;
+        --ink: #22201d;
+        --muted: #685f56;
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+        --line: #d5c8b7;
+        --error: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 24%),
+          linear-gradient(180deg, #f7f2ea 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+
+      main {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 40px 24px 56px;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 40px;
+        line-height: 1.05;
+      }
+
+      p {
+        line-height: 1.6;
+      }
+
+      .hero {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: 1.2fr 0.8fr;
+        align-items: start;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 24px;
+        box-shadow: 0 16px 50px rgba(34, 32, 29, 0.07);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        box-shadow: none;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button[disabled] {
+        cursor: wait;
+        opacity: 0.7;
+      }
+
+      select {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: white;
+        color: var(--ink);
+      }
+
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .status,
+      .help,
+      .error {
+        font-size: 15px;
+      }
+
+      .error {
+        color: var(--error);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        background: #e3f7f4;
+        color: #0f5c56;
+        padding: 8px 12px;
+      }
+
+      @media (max-width: 760px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 32px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="card">
+          <h1>Gmail To Calendar</h1>
+          <p>
+            Configure a autenticacao Google e escolha a agenda fixa em que os prazos detectados no Gmail serao
+            criados.
+          </p>
+          <p class="help muted">
+            Antes do primeiro login, substitua o client id OAuth de exemplo no manifest.json por um client id
+            real do Google Cloud.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <span class="pill" id="accountPill">Nao autenticado</span>
+          </div>
+          <p class="status" id="statusText">Verificando autenticacao...</p>
+          <div class="row">
+            <button id="loginButton">Entrar com Google</button>
+            <button id="reloadButton" type="button">Recarregar agendas</button>
+          </div>
+          <p class="error" id="errorText" hidden></p>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top: 24px">
+        <h2 style="margin-top: 0">Agenda de destino</h2>
+        <p class="muted">
+          Essa agenda sera usada sempre que voce confirmar os prazos detectados em um email.
+        </p>
+        <label for="calendarSelect" class="muted">Escolha uma agenda</label>
+        <div class="row" style="margin-top: 10px">
+          <select id="calendarSelect" disabled>
+            <option value="">Carregando...</option>
+          </select>
+          <button id="saveButton" type="button" disabled>Salvar agenda</button>
+        </div>
+        <p class="status" id="selectionStatus">Nenhuma agenda selecionada.</p>
+      </section>
+    </main>
+
+    <script type="module" src="./options.js"></script>
+  </body>
+</html>
