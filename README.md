@@ -14,7 +14,13 @@ Esta primeira implementacao entrega:
 
 ## Configuracao OAuth
 
-Antes de carregar a extensao no Chrome, substitua o `client_id` de exemplo em [manifest.json](manifest.json) por um OAuth Client ID real do Google Cloud.
+Para nao versionar o `client_id` real, este repositorio deve manter apenas [manifest.example.json](manifest.example.json) com placeholder e deixar [manifest.json](manifest.json) fora do Git.
+
+Fluxo recomendado:
+
+1. Copie [manifest.example.json](manifest.example.json) para `manifest.json` localmente.
+2. Preencha o `client_id` real no seu `manifest.json` local.
+3. Carregue a extensao no Chrome usando esse arquivo local, que fica ignorado pelo Git.
 
 Escopo necessario:
 
@@ -56,7 +62,7 @@ O Google pede o ID da extensao para criar uma credencial do tipo `Extensao do Ch
 
 ### Onde colocar o client_id
 
-Depois que o Google Cloud gerar a credencial, copie o `Client ID` e substitua este valor em [manifest.json](manifest.json):
+Depois que o Google Cloud gerar a credencial, copie o `Client ID` para o seu [manifest.json](manifest.json) local. O arquivo versionado de referencia e [manifest.example.json](manifest.example.json):
 
 ```json
 "oauth2": {
@@ -76,10 +82,11 @@ Depois que o Google Cloud gerar a credencial, copie o `Client ID` e substitua es
 
 1. Abra o Chrome em `chrome://extensions`.
 2. Ative o modo de desenvolvedor.
-3. Clique em `Carregar sem compactacao` e selecione esta pasta.
-4. Abra as opcoes da extensao.
-5. Faça login com Google e selecione a agenda fixa.
-6. Abra um email no Gmail e clique em `Detectar prazos e enviar para agenda`.
+3. Se ainda nao existir, crie `manifest.json` local a partir de [manifest.example.json](manifest.example.json).
+4. Clique em `Carregar sem compactacao` e selecione esta pasta.
+5. Abra as opcoes da extensao.
+6. Faça login com Google e selecione a agenda fixa.
+7. Abra um email no Gmail e clique em `Detectar prazos e enviar para agenda`.
 
 ## Scripts
 
@@ -89,4 +96,4 @@ Depois que o Google Cloud gerar a credencial, copie o `Client ID` e substitua es
 
 - o parser ainda nao cobre linguagem natural complexa
 - a injecao no Gmail usa seletores defensivos, mas pode precisar ajuste conforme mudancas de DOM do Gmail
-- a extensao depende de configuracao manual do OAuth no manifest
+- a extensao depende de configurar manualmente o `manifest.json` local antes do primeiro uso
