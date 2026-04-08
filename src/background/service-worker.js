@@ -183,6 +183,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return
       case 'CREATE_EVENTS':
         sendResponse({ ok: true, data: await handleCreateEvents(message.payload) })
+        alert(`${message.payload.deadlines.length} prazos criados no Google Calendar!`)
         return
       default:
         sendResponse({ ok: false, error: 'Mensagem nao suportada.' })

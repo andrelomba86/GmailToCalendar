@@ -4,6 +4,7 @@
   const PANEL_ID = 'gmail-to-calendar-panel'
   const PANEL_OVERLAY_ID = 'gmail-to-calendar-overlay'
   const STYLE_ID = 'gmail-to-calendar-style'
+  let bootScheduled = false
 
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) {
@@ -143,6 +144,18 @@
         font-size: 12px !important;
       }
 
+      .gtc-context {
+        margin-top: 6px !important;
+        color: #334155 !important;
+        font-size: 12px !important;
+        line-height: 1.5 !important;
+        padding: 8px 10px !important;
+        border-radius: 10px !important;
+        background: #f8fafc !important;
+        border: 1px solid #e2e8f0 !important;
+        white-space: pre-wrap !important;
+      }
+
       .gtc-actions {
         display: flex !important;
         gap: 10px !important;
@@ -158,6 +171,22 @@
       .gtc-message {
         font-size: 13px !important;
         margin-top: 10px !important;
+      }
+
+      .gtc-created-list {
+        display: grid !important;
+        gap: 6px !important;
+        margin-top: 10px !important;
+      }
+
+      .gtc-created-link {
+        color: #0f5c56 !important;
+        text-decoration: none !important;
+        font-weight: 600 !important;
+      }
+
+      .gtc-created-link:hover {
+        text-decoration: underline !important;
       }
 
       .gtc-error {
@@ -205,6 +234,68 @@
 
   function toAllDayDate(date) {
     return date.toISOString().slice(0, 10)
+  }
+
+  function trimContextSnippet(text, matchText = '') {
+    const normalized = cleanText(text)
+    if (!normalized) {
+      return ''
+    }
+
+    if (normalized.length <= 240) {
+      return normalized
+    }
+
+    const lowerText = normalized.toLowerCase()
+    const lowerMatch = matchText.toLowerCase()
+    const matchIndex = lowerMatch ? lowerText.indexOf(lowerMatch) : -1
+    if (matchIndex === -1) {
+      return `${normalized.slice(0, 237).trimEnd()}...`
+    }
+
+    const desiredLength = 220
+    const halfWindow = Math.floor(desiredLength / 2)
+    let start = Math.max(0, matchIndex - halfWindow)
+    let end = Math.min(normalized.length, start + desiredLength)
+
+    if (end === normalized.length) {
+      start = Math.max(0, end - desiredLength)
+    }
+
+    const prefix = start > 0 ? '...' : ''
+    const suffix = end < normalized.length ? '...' : ''
+
+    return `${prefix}${normalized.slice(start, end).trim()}${suffix}`
+  }
+
+  function extractMatchContext(text, matchIndex, matchText) {
+    const sourceText = String(text || '')
+    if (!sourceText) {
+      return ''
+    }
+
+    const normalizedSource = sourceText.replace(/\r\n/g, '\n')
+    const paragraphs = normalizedSource
+      .split(/\n\s*\n+/)
+      .map(paragraph => paragraph.trim())
+      .filter(Boolean)
+
+    if (!paragraphs.length) {
+      return trimContextSnippet(sourceText, matchText)
+    }
+
+    let offset = 0
+    const paragraph = paragraphs.find(currentParagraph => {
+      const start = normalizedSource.indexOf(currentParagraph, offset)
+      if (start === -1) {
+        return false
+      }
+
+      offset = start + currentParagraph.length
+      return matchIndex >= start && matchIndex <= start + currentParagraph.length
+    })
+
+    return trimContextSnippet(paragraph || sourceText, matchText)
   }
 
   function parseExplicitDates(text, baseDate, subject) {
@@ -264,6 +355,7 @@
           id: `deadline-${results.length + 1}`,
           title: subject || 'Prazo detectado no Gmail',
           sourceText: match[0],
+          contextText: extractMatchContext(text, match.index, match[0]),
           confidence: 'high',
           selected: true,
           allDay: hour === null,
@@ -294,50 +386,132 @@
     return current
   }
 
+  function hasTimeHint(text) {
+    return /\b(?:as|às)\s+\d{1,2}(?::\d{2})?\b|\b\d{1,2}h(?:\d{2})?\b/i.test(text)
+  }
+
+  function hasRelevantRelativeContext(contextText, token) {
+    const context = cleanText(contextText).toLowerCase()
+    if (!context) {
+      return false
+    }
+
+    if (hasTimeHint(context)) {
+      return true
+    }
+
+    const keywords = [
+      'agenda',
+      'agendar',
+      'agendado',
+      'agendada',
+      'apresentacao',
+      'apresentação',
+      'audiencia',
+      'audiência',
+      'boleto',
+      'call',
+      'compromisso',
+      'concluir',
+      'conclusao',
+      'conclusão',
+      'deadline',
+      'devolver',
+      'disponivel',
+      'disponível',
+      'entrega',
+      'entregar',
+      'entregue',
+      'enviar',
+      'envio',
+      'evento',
+      'finalizar',
+      'liberar',
+      'pagamento',
+      'pagar',
+      'prazo',
+      'publicar',
+      'responder',
+      'resposta',
+      'retorno',
+      'reuniao',
+      'reunião',
+      'submissao',
+      'submissão',
+      'vence',
+      'vencimento',
+    ]
+
+    if (keywords.some(keyword => context.includes(keyword))) {
+      return true
+    }
+
+    if (token.startsWith('até') || token.startsWith('ate')) {
+      return /\b(?:precisa|precisamos|preciso|favor|urgente|combinar|definir|validar|aprovar)\b/i.test(
+        context,
+      )
+    }
+
+    return false
+  }
+
   function parseRelativeDates(text, baseDate, subject, initialIndex) {
     const results = []
     const lowerText = text.toLowerCase()
     const mappings = [
       {
-        tokens: ['amanha', 'amanhã'],
+        patterns: [/\bamanh[ãa]\b/gi],
         resolver: () =>
           new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + 1, 9, 0, 0, 0),
       },
       {
-        tokens: ['hoje'],
+        patterns: [/\bhoje\b/gi],
         resolver: () => new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 9, 0, 0, 0),
       },
       {
-        tokens: ['proxima semana', 'próxima semana'],
+        patterns: [/\bproxima semana\b/gi, /\bpróxima semana\b/gi, /\bsemana que vem\b/gi],
         resolver: () =>
           new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + 7, 9, 0, 0, 0),
       },
-      { tokens: ['ate sexta', 'até sexta'], resolver: () => nextWeekday(baseDate, 5) },
-      { tokens: ['ate segunda', 'até segunda'], resolver: () => nextWeekday(baseDate, 1) },
-      { tokens: ['ate terca', 'até terca', 'até terça'], resolver: () => nextWeekday(baseDate, 2) },
-      { tokens: ['ate quarta', 'até quarta'], resolver: () => nextWeekday(baseDate, 3) },
-      { tokens: ['ate quinta', 'até quinta'], resolver: () => nextWeekday(baseDate, 4) },
+      { patterns: [/\bate sexta\b/gi, /\baté sexta\b/gi], resolver: () => nextWeekday(baseDate, 5) },
+      { patterns: [/\bate segunda\b/gi, /\baté segunda\b/gi], resolver: () => nextWeekday(baseDate, 1) },
+      {
+        patterns: [/\bate terca\b/gi, /\baté terca\b/gi, /\baté terça\b/gi],
+        resolver: () => nextWeekday(baseDate, 2),
+      },
+      { patterns: [/\bate quarta\b/gi, /\baté quarta\b/gi], resolver: () => nextWeekday(baseDate, 3) },
+      { patterns: [/\bate quinta\b/gi, /\baté quinta\b/gi], resolver: () => nextWeekday(baseDate, 4) },
     ]
 
-    mappings.forEach((mapping, index) => {
-      const foundToken = mapping.tokens.find(token => lowerText.includes(token))
-      if (!foundToken) {
-        return
-      }
+    mappings.forEach(mapping => {
+      mapping.patterns.forEach(pattern => {
+        let match
+        while ((match = pattern.exec(lowerText))) {
+          const foundToken = match[0]
+          const matchIndex = match.index
+          const contextText = extractMatchContext(text, matchIndex, foundToken)
+          if (!hasRelevantRelativeContext(contextText, foundToken)) {
+            continue
+          }
 
-      const detected = mapping.resolver()
-      results.push({
-        id: `deadline-${initialIndex + index + 1}`,
-        title: subject || 'Prazo detectado no Gmail',
-        sourceText: foundToken,
-        confidence: 'medium',
-        selected: true,
-        allDay: true,
-        date: toAllDayDate(detected),
-        endDate: toAllDayDate(new Date(detected.getFullYear(), detected.getMonth(), detected.getDate() + 1)),
-        dateTime: undefined,
-        endDateTime: undefined,
-        displayDate: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(detected),
+          const detected = mapping.resolver()
+          results.push({
+            id: `deadline-${initialIndex + results.length + 1}`,
+            title: subject || 'Prazo detectado no Gmail',
+            sourceText: foundToken,
+            contextText,
+            confidence: 'medium',
+            selected: true,
+            allDay: true,
+            date: toAllDayDate(detected),
+            endDate: toAllDayDate(
+              new Date(detected.getFullYear(), detected.getMonth(), detected.getDate() + 1),
+            ),
+            dateTime: undefined,
+            endDateTime: undefined,
+            displayDate: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(detected),
+          })
+        }
       })
     })
 
@@ -363,6 +537,49 @@
     return dedupeDeadlines([...explicit, ...relative])
   }
 
+  function getMailboxBaseUrl() {
+    const match = window.location.pathname.match(/^\/mail\/u\/[^/]+\//)
+    const mailboxPath = match ? match[0] : '/mail/u/0/'
+    return `${window.location.origin}${mailboxPath}`
+  }
+
+  function normalizeUrl(url) {
+    if (!url) {
+      return ''
+    }
+
+    try {
+      return new URL(url, window.location.origin).toString()
+    } catch {
+      return ''
+    }
+  }
+
+  function getVisibleThreadNode() {
+    return Array.from(document.querySelectorAll('[data-legacy-thread-id]')).find(isVisibleElement) || null
+  }
+
+  function getThreadHashUrl(legacyThreadId) {
+    if (!legacyThreadId) {
+      return ''
+    }
+
+    return `${getMailboxBaseUrl()}#all/${encodeURIComponent(legacyThreadId)}`
+  }
+
+  function buildThreadPermalink() {
+    const dataThreadId = document.querySelector('h2[data-thread-perm-id]').getAttribute('data-thread-perm-id')
+
+    if (!dataThreadId) return null
+    const match = dataThreadId.match(/msg-f:(\d+)/)
+
+    if (!match) return null
+
+    const msgId = match[1]
+
+    return `https://mail.google.com/mail/u/0/?ik=edfe100f47&view=lg&permmsgid=msg-f:${msgId}`
+  }
+
   function extractCurrentEmail() {
     const subject =
       cleanText(document.querySelector('h2[data-thread-perm-id]')?.textContent) ||
@@ -370,12 +587,13 @@
       cleanText(document.title.replace(/\s+-\s+Gmail$/, ''))
 
     const from =
-      cleanText(document.querySelector('span[email]')?.getAttribute('email')) ||
-      cleanText(document.querySelector('span[email]')?.textContent) ||
+      cleanText(document.querySelector('span.qu > span[email]')?.getAttribute('email')) ||
+      cleanText(document.querySelector('span.yKyxu > span[email]')?.getAttribute('email')) ||
       ''
 
     const messageBodies = Array.from(document.querySelectorAll('div[role="listitem"] div.a3s, div.a3s'))
-    const bodyText = cleanText(messageBodies.map(node => node.innerText || node.textContent || '').join(' '))
+    const rawBodyText = messageBodies.map(node => node.innerText || node.textContent || '').join('\n\n')
+    const bodyText = cleanText(rawBodyText)
 
     const timeElement = document.querySelector('time[datetime]')
     const baseDate = timeElement?.getAttribute('datetime') || new Date().toISOString()
@@ -383,10 +601,10 @@
     return {
       subject,
       from,
-      bodyText,
+      bodyText: rawBodyText,
       snippet: bodyText.slice(0, 600),
       baseDate,
-      link: window.location.href,
+      link: buildThreadPermalink(),
     }
   }
 
@@ -398,6 +616,41 @@
 
       return response.data
     })
+  }
+
+  function clearNode(node) {
+    while (node.firstChild) {
+      node.removeChild(node.firstChild)
+    }
+  }
+
+  function renderSuccessMessage(message, result) {
+    clearNode(message)
+    message.className = 'gtc-message gtc-success'
+
+    const summary = document.createElement('div')
+    summary.textContent = `${result.createdCount} evento(s) criado(s) com sucesso.`
+    message.append(summary)
+
+    const createdWithLinks = (result.created || []).filter(event => event.htmlLink)
+    if (!createdWithLinks.length) {
+      return
+    }
+
+    const createdList = document.createElement('div')
+    createdList.className = 'gtc-created-list'
+
+    createdWithLinks.forEach((event, index) => {
+      const link = document.createElement('a')
+      link.className = 'gtc-created-link'
+      link.href = event.htmlLink
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = event.summary || `Abrir evento ${index + 1}`
+      createdList.append(link)
+    })
+
+    message.append(createdList)
   }
 
   function renderPanel(deadlines, email, mountPoint) {
@@ -451,12 +704,30 @@
       checkbox.dataset.deadlineId = deadline.id
 
       const text = document.createElement('div')
-      text.innerHTML = `
-        <strong>${deadline.title}</strong>
-        <div class="gtc-meta">${deadline.displayDate}</div>
-        <div class="gtc-meta">Trecho: ${deadline.sourceText}</div>
-        <div class="gtc-meta">Confianca: ${deadline.confidence === 'high' ? 'alta' : 'media'}</div>
-      `
+
+      const title = document.createElement('strong')
+      title.textContent = deadline.title
+
+      const displayDate = document.createElement('div')
+      displayDate.className = 'gtc-meta'
+      displayDate.textContent = deadline.displayDate
+
+      const sourceText = document.createElement('div')
+      sourceText.className = 'gtc-meta'
+      sourceText.textContent = `Trecho: ${deadline.sourceText}`
+
+      const confidence = document.createElement('div')
+      confidence.className = 'gtc-meta'
+      confidence.textContent = `Confianca: ${deadline.confidence === 'high' ? 'alta' : 'media'}`
+
+      text.append(title, displayDate, sourceText, confidence)
+
+      if (deadline.contextText) {
+        const context = document.createElement('div')
+        context.className = 'gtc-context'
+        context.textContent = deadline.contextText
+        text.append(context)
+      }
 
       label.append(checkbox, text)
       item.append(label)
@@ -481,8 +752,11 @@
     message.className = 'gtc-message'
 
     createButton.addEventListener('click', async () => {
+      clearNode(message)
       message.textContent = 'Criando eventos...'
       message.className = 'gtc-message'
+      createButton.disabled = true
+      refreshButton.disabled = true
 
       const selectedDeadlines = deadlines.map(deadline => ({
         ...deadline,
@@ -494,11 +768,14 @@
           email,
           deadlines: selectedDeadlines,
         })
-        message.textContent = `${result.createdCount} evento(s) criado(s) com sucesso.`
-        message.className = 'gtc-message gtc-success'
+        renderSuccessMessage(message, result)
       } catch (error) {
+        clearNode(message)
         message.textContent = error.message
         message.className = 'gtc-message gtc-error'
+      } finally {
+        createButton.disabled = !deadlines.length
+        refreshButton.disabled = false
       }
     })
 
@@ -522,13 +799,25 @@
 
   function ensureRoot(mountPoint) {
     let root = document.getElementById(ROOT_ID)
+
+    if (root && !root.isConnected) {
+      root = null
+    }
+
     if (!root) {
       root = document.createElement('div')
       root.id = ROOT_ID
       mountPoint.insertAdjacentElement('afterend', root)
+    } else if (root.previousElementSibling !== mountPoint) {
+      mountPoint.insertAdjacentElement('afterend', root)
     }
 
-    if (!document.getElementById(BUTTON_ID)) {
+    let button = document.getElementById(BUTTON_ID)
+    if (button && button.parentElement !== root) {
+      root.appendChild(button)
+    }
+
+    if (!button) {
       const button = document.createElement('button')
       button.id = BUTTON_ID
       button.type = 'button'
@@ -554,11 +843,39 @@
     }
   }
 
+  function isVisibleElement(element) {
+    if (!element || !element.isConnected) {
+      return false
+    }
+
+    const style = window.getComputedStyle(element)
+    if (style.display === 'none' || style.visibility === 'hidden') {
+      return false
+    }
+
+    return element.getClientRects().length > 0
+  }
+
   function findMountPoint() {
-    return document.querySelector('div.gK') || document.querySelector('h2.hP')
+    const selectors = [
+      'div[role="main"] div.gK',
+      'div[role="main"] h2[data-thread-perm-id]',
+      'div[role="main"] h2.hP',
+    ]
+
+    for (const selector of selectors) {
+      const candidates = Array.from(document.querySelectorAll(selector))
+      const visibleCandidate = candidates.find(isVisibleElement)
+      if (visibleCandidate) {
+        return visibleCandidate
+      }
+    }
+
+    return null
   }
 
   function boot() {
+    bootScheduled = false
     ensureStyles()
     const mountPoint = findMountPoint()
     if (!mountPoint) {
@@ -568,8 +885,22 @@
     ensureRoot(mountPoint)
   }
 
+  function scheduleBoot() {
+    if (bootScheduled) {
+      return
+    }
+
+    bootScheduled = true
+
+    requestAnimationFrame(() => {
+      boot()
+      window.setTimeout(boot, 150)
+      window.setTimeout(boot, 500)
+    })
+  }
+
   const observer = new MutationObserver(() => {
-    boot()
+    scheduleBoot()
   })
 
   observer.observe(document.documentElement, {
@@ -577,5 +908,8 @@
     subtree: true,
   })
 
-  boot()
+  window.addEventListener('hashchange', scheduleBoot)
+  window.addEventListener('popstate', scheduleBoot)
+
+  scheduleBoot()
 })()
