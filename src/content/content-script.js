@@ -591,10 +591,12 @@
       cleanText(document.querySelector('span.yKyxu > span[email]')?.getAttribute('email')) ||
       ''
 
-    const messageBodies = Array.from(document.querySelectorAll('div[role="listitem"] div.a3s, div.a3s'))
-    const rawBodyText = messageBodies.map(node => node.innerText || node.textContent || '').join('\n\n')
+    // const messageBodies = Array.from(document.querySelectorAll('div[role="listitem"] div.a3s, div.a3s'))
+    // const rawBodyText = messageBodies.map(node => node.innerText || node.textContent || '').join('\n\n')
+    // const bodyText = cleanText(rawBodyText)
+    const messageBody = document.querySelector('div[role="listitem"] div.a3s')
+    const rawBodyText = messageBody.innerText || messageBody.textContent
     const bodyText = cleanText(rawBodyText)
-
     const timeElement = document.querySelector('time[datetime]')
     const baseDate = timeElement?.getAttribute('datetime') || new Date().toISOString()
 
